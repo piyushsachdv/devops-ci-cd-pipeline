@@ -7,28 +7,43 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Build Image
-      run: docker build -t ${{ secrets.DOCKER_USERNAME }}/ci-cd-app .
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Login Docker Hub
-      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Build and Push Image
+        run: |
+          # Convert username to lowercase to prevent Docker naming errors
+          REPO=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
+          docker build -t $REPO/ci-cd-app:latest .
+          docker push $REPO/ci-cd-app:latest
 
-    - name: Push Image
-      run: docker push ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
+      - name: SSH into EC2 and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 1. Variables
+            REPO=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
+            
+            # 2. Pull the latest image
+            docker pull $REPO/ci-cd-app:latest
+            
+            # 3. Stop and remove the old container
+            docker stop app || true
+            docker rm app || true
+            
+            # 4. Run the new container on port 5000
+            docker run -d --name app -p 5000:5000 $REPO/ci-cd-app:latest
+            
+            # 5. Clean up old images to save EC2 space
+            docker image prune -f
 
-    - name: Deploy to EC2
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          docker stop app || true
-          docker rm app || true
-          docker pull ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
-          docker run -d -p 5000:5000 --name app ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
