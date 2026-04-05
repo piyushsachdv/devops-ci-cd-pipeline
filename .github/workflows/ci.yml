@@ -1,16 +1,30 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-test-push:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Build Docker image
-      run: docker build -t ci-cd-app .
+    - name: Build Docker Image
+      run: docker build -t ${{ secrets.DOCKER_USERNAME }}/ci-cd-app .
+
+    - name: Run Container for Testing
+      run: |
+        docker run -d -p 5000:5000 --name test-app ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
+        sleep 5
+
+    - name: Test Application
+      run: curl http://localhost:5000 | grep "CI/CD Pipeline is Working!"
+
+    - name: Login to Docker Hub
+      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: Push Image
+      run: docker push ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
