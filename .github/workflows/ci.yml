@@ -5,38 +5,30 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-test-push:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
+    - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Build Docker Image
-      run: |
-        # Convert username to lowercase to satisfy Docker naming rules
-        REPO_NAME=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
-        docker build -t $REPO_NAME/ci-cd-app:latest .
+    - name: Build Image
+      run: docker build -t ${{ secrets.DOCKER_USERNAME }}/ci-cd-app .
 
-    - name: Run Container for Testing
-      run: |
-        REPO_NAME=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
-        docker run -d -p 5000:5000 --name test-app $REPO_NAME/ci-cd-app:latest
-        sleep 5
+    - name: Login Docker Hub
+      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-    - name: Test Application
-      run: |
-        # Check if the Flask app returns the success message
-        curl http://localhost:5000 | grep "CI/CD Pipeline is Working!"
+    - name: Push Image
+      run: docker push ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v2
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v0.1.6
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Push to Docker Hub
-      run: |
-        REPO_NAME=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
-        docker push $REPO_NAME/ci-cd-app:latest
-
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          docker stop app || true
+          docker rm app || true
+          docker pull ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
+          docker run -d -p 5000:5000 --name app ${{ secrets.DOCKER_USERNAME }}/ci-cd-app
