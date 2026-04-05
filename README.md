@@ -64,7 +64,7 @@ Docker container running on EC2 instance.
 ### Docker Hub Image
 Docker image stored and versioned on Docker Hub.
 
-![Docker Hub](./screenshots/dockerhub.png)
+![Docker Hub](./screenshots/dockerhub1.png)
 
 ---
 
